@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>גיול חובות לקוחות - נייד</title>
+    <!-- SheetJS (XLSX / CSV) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Assistant', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #ffffff; color: #000000; padding: 15px; direction: rtl; text-align: right; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; }
+        .header h1 { font-size: 1.3rem; font-weight: 700; }
+        .bsd { font-weight: 700; font-size: 1rem; }
+
+        .upload-card { border: 1px solid #000; padding: 14px; border-radius: 6px; margin-bottom: 16px; background: #fff; }
+        label { font-weight: 700; display: block; margin-bottom: 6px; font-size: 0.9rem; }
+        input[type="file"] { width: 100%; padding: 8px; border: 1px solid #000; border-radius: 4px; font-size: 0.85rem; }
+
+        .search-input { width: 100%; padding: 12px; border: 1px solid #000; border-radius: 6px; font-size: 1rem; margin-bottom: 16px; font-weight: 600; }
+
+        .customer-card { border: 1px solid #000; border-radius: 6px; padding: 14px; margin-bottom: 12px; background: #fafafa; }
+        .customer-title { font-size: 1.1rem; font-weight: 700; display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+        .total-debt { color: #b91c1c; font-weight: 700; }
+
+        .aging-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; margin: 10px 0; font-size: 0.8rem; }
+        .aging-box { border: 1px solid #ccc; padding: 6px 2px; border-radius: 4px; background: #fff; }
+        .aging-box .val { font-weight: 700; margin-top: 2px; font-size: 0.85rem; }
+        .aging-box.alert { border-color: #000; background: #f0f0f0; }
+
+        .btn-action { display: block; width: 100%; background: #000; color: #fff; text-align: center; padding: 10px; border-radius: 4px; text-decoration: none; font-weight: 700; font-size: 0.9rem; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="bsd">בס"ד</div>
+        <h1>גיול חובות לקוחות - נייד</h1>
+        <div></div>
+    </div>
+
+    <div class="upload-card">
+        <label for="fileInput">טען כרטסת / דוח גיול (Excel / CSV):</label>
+        <input type="file" id="fileInput" accept=".xlsx, .xls, .csv">
+    </div>
+
+    <input type="text" id="searchInput" class="search-input" placeholder="🔍 חפש לקוח לפי שם או מפתח..." style="display:none;">
+
+    <div id="customersList"></div>
+
+    <script>
+        let allCustomers = [];
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+                    parseAgingData(rows);
+                } catch (err) {
+                    alert('שגיאה בקריאת הקובץ');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function parseAgingData(rows) {
+            allCustomers = [];
+            rows.forEach(r => {
+                const key = r['מפתח'] || r['קוד'] || r['ID'] || '';
+                const name = r['שם לקוח'] || r['שם'] || r['לקוח'] || '';
+                const total = parseFloat(r['סה"כ חוב'] || r['חוב'] || r['יתרה'] || 0);
+                const current = parseFloat(r['שוטף'] || r['שוטף+'] || 0);
+                const d30 = parseFloat(r['30 יום'] || r['30'] || 0);
+                const d60 = parseFloat(r['60 יום'] || r['60'] || 0);
+                const d90 = parseFloat(r['90 יום'] || r['90+'] || r['90'] || 0);
+                const phone = r['טלפון'] || r['נייד'] || r['סלולרי'] || '';
+
+                if (name) {
+                    allCustomers.push({ key, name, total, current, d30, d60, d90, phone });
+                }
+            });
+
+            document.getElementById('searchInput').style.display = 'block';
+            renderList(allCustomers);
+        }
+
+        function renderList(list) {
+            const container = document.getElementById('customersList');
+            if (list.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:20px;">לא נמצאו לקוחות</div>';
+                return;
+            }
+
+            let html = '';
+            list.forEach(c => {
+                html += `
+                <div class="customer-card">
+                    <div class="customer-title">
+                        <span>${c.name} ${c.key ? '(' + c.key + ')' : ''}</span>
+                        <span class="total-debt">₪${c.total.toLocaleString()}</span>
+                    </div>
+                    <div class="aging-grid">
+                        <div class="aging-box"><div>שוטף</div><div class="val">₪${c.current.toLocaleString()}</div></div>
+                        <div class="aging-box"><div>30 יום</div><div class="val">₪${c.d30.toLocaleString()}</div></div>
+                        <div class="aging-box"><div>60 יום</div><div class="val">₪${c.d60.toLocaleString()}</div></div>
+                        <div class="aging-box alert"><div>90+ יום</div><div class="val">₪${c.d90.toLocaleString()}</div></div>
+                    </div>
+                    ${c.phone ? `<a href="https://wa.me/${c.phone}?text=${encodeURIComponent('שלום ' + c.name + ', מצורף פירוט חוב עדכני בסך ₪' + c.total.toLocaleString())}" class="btn-action">📱 שלח פירוט ב-WhatsApp</a>` : ''}
+                </div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            const val = e.target.value.toLowerCase();
+            const filtered = allCustomers.filter(c => 
+                c.name.toLowerCase().includes(val) || c.key.toString().includes(val)
+            );
+            renderList(filtered);
+        });
+    </script>
+</body>
+</html>
